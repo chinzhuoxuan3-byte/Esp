@@ -1,0 +1,160 @@
+--!strict
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- 1. 配置参数
+getgenv().FinalTrackConfig = {
+    Enabled = false,
+    Keyword = "Barrel", 
+    TargetParts = {"HumanoidRootPart", "Head", "UpperTorso"},
+    SafeDistance = 10 -- 触发距离
+}
+local Config = getgenv().FinalTrackConfig
+
+-- 2. 目标与距离变量 (低频更新缓存)
+local currentTarget: BasePart? = nil
+local isDefending = false
+
+task.spawn(function()
+    while true do
+        if Config.Enabled then
+            local b = Camera:FindFirstChild(Config.Keyword, true)
+            if b then
+                local model = b:FindFirstAncestorOfClass("Model")
+                if model then
+                    -- 寻找目标部位
+                    local foundPart = nil
+                    for _, name in ipairs(Config.TargetParts) do
+                        local p = model:FindFirstChild(name)
+                        if p and p:IsA("BasePart") then foundPart = p break end
+                    end
+                    currentTarget = foundPart or (b:IsA("BasePart") and b or nil)
+                    
+                    -- 检测玩家靠近逻辑
+                    if currentTarget then
+                        local foundPlayer = false
+                        for _, player in ipairs(Players:GetPlayers()) do
+                            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local dist = (player.Character.HumanoidRootPart.Position - currentTarget.Position).Magnitude
+                                if dist <= Config.SafeDistance then
+                                    foundPlayer = true
+                                    break
+                                end
+                            end
+                        end
+                        isDefending = foundPlayer
+                    else
+                        isDefending = false
+                    end
+                end
+            else
+                currentTarget = nil
+                isDefending = false
+            end
+        else
+            currentTarget = nil
+            isDefending = false
+        end
+        task.wait(0.2) -- 每秒扫描5次，平衡性能与反应速度
+    end
+end)
+
+-- 3. 子弹追踪 Hook (高性能)
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if Config.Enabled and isDefending and currentTarget and not checkcaller() then
+        if method == "Raycast" and (self == Workspace or self.ClassName == "Workspace") then
+            local origin = args[1]
+            local dir = (currentTarget.Position - origin)
+            args[2] = dir.Unit * (dir.Magnitude + 10)
+            return oldNamecall(self, unpack(args))
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, index)
+    if Config.Enabled and isDefending and currentTarget and not checkcaller() then
+        if self == Mouse and (index == "Hit" or index == "Target") then
+            return index == "Hit" and currentTarget.CFrame or currentTarget
+        end
+    end
+    return oldIndex(self, index)
+end)
+
+-- 4. 自动发射触发器
+local lastFire = 0
+RunService.Heartbeat:Connect(function()
+    if Config.Enabled and isDefending and currentTarget then
+        if tick() - lastFire >= 0.1 then -- 射频间隔
+            lastFire = tick()
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            task.delay(0.02, function()
+                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            end)
+        end
+    end
+end)
+
+-------------------------------------------------------------------------------
+-- 5. 带拖动功能的 UI
+-------------------------------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local MainBtn = Instance.new("TextButton", ScreenGui)
+MainBtn.Size = UDim2.new(0, 180, 0, 45)
+MainBtn.Position = UDim2.new(0.5, -90, 0.8, 0)
+MainBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainBtn.BorderSizePixel = 2
+MainBtn.BorderColor3 = Color3.fromRGB(255, 0, 0)
+MainBtn.Text = "DEFENSE OFF"
+MainBtn.TextColor3 = Color3.new(1, 1, 1)
+MainBtn.Font = Enum.Font.SourceSansBold
+MainBtn.TextSize = 16
+MainBtn.ClipsDescendants = true
+
+-- 增强版拖动逻辑 (兼容手机/电脑)
+local dragging, dragStart, startPos
+MainBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainBtn.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- 点击开关与状态显示
+MainBtn.MouseButton1Click:Connect(function()
+    Config.Enabled = not Config.Enabled
+    MainBtn.BorderColor3 = Config.Enabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not Config.Enabled then 
+        MainBtn.Text = "DEFENSE OFF"
+    elseif isDefending then
+        MainBtn.Text = "🔥 PROTECTING NPC"
+    else
+        MainBtn.Text = "📡 SCANNING..."
+    end
+end)
