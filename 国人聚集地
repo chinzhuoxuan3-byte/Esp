@@ -1,0 +1,70 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Window = Library:CreateWindow({
+	Title = "乐子人嘉豪 - 全服告示牌修改",
+	Footer = "Logic: Remote Exploit",
+	Icon = 95816097006870,
+	NotifySide = "Right",
+	ShowCustomCursor = true,
+})
+
+local Tabs = {
+	Main = Window:AddTab("主要功能", "edit"),
+	["UI Settings"] = Window:AddTab("设置", "settings"),
+}
+
+local MainGroup = Tabs.Main:AddLeftGroupbox("告示牌控制")
+
+local TargetRemoteName = "RemoteEvent"
+local TargetObjectName = "\231\137\140\229\173\144"
+
+local function ChangeAllSigns(text)
+    for _, v in pairs(game:GetDescendants()) do
+        if v.Name == TargetObjectName and v:FindFirstChild(TargetRemoteName) then
+            pcall(function()
+                v[TargetRemoteName]:FireServer(text)
+            end)
+        end
+    end
+end
+
+MainGroup:AddInput("SignText", {
+	Default = "在此输入内容",
+	Numeric = false,
+	Finished = false,
+	Text = "告示牌文字",
+	Tooltip = "输入你想显示的文字",
+	Placeholder = "你好...",
+	Callback = function(Value)
+		_G.SelectedText = Value
+	end
+})
+
+MainGroup:AddButton("修改全服告示牌", function()
+	local text = _G.SelectedText or "Hello World"
+	ChangeAllSigns(text)
+    Library:Notify("正在尝试修改全服内容: " .. text)
+end)
+
+MainGroup:AddButton("一键清空内容", function()
+	ChangeAllSigns("")
+end)
+
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
+MenuGroup:AddButton("卸载脚本", function() Library:Unload() end)
+MenuGroup:AddLabel("菜单键位"):AddKeyPicker("MenuKey", { Default = "RightShift", NoUI = true, Text = "Menu bind" })
+
+Library.ToggleKeybind = Library.Options.MenuKeybind 
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+
+Library:OnUnload(function()
+	print("告示牌修改脚本已卸载")
+end)
