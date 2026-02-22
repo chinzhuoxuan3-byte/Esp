@@ -6,81 +6,90 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local RageEnabled = false
-local TeamCheck = true
+local NpcOnly = false
 local TargetPart = "Head"
 local FireRate = 0
 local lastFired = 0
-local RadiusOffset = 0.1
+local PredictionAmount = 0.125 
 
-local Window = Library:CreateWindow({ Title = "Ragebot Internal", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Ragebot ULTRA", Center = true, AutoShow = true })
 local MainTab = Window:AddTab("Main")
-local RageGroup = MainTab:AddLeftGroupbox("暴力选项")
+local RageGroup = MainTab:AddLeftGroupbox("Rageebkttr")
 
 RageGroup:AddToggle("RageToggle", {
-    Text = "启用 Ragebot",
+    Text = "Ragebot",
     Default = false,
     Callback = function(Value) RageEnabled = Value end
 })
 
-RageGroup:AddToggle("TeamCheck", {
-    Text = "队伍检测",
-    Default = true,
-    Callback = function(Value) TeamCheck = Value end
+RageGroup:AddToggle("NpcToggle", {
+    Text = "NPC",
+    Default = false,
+    Callback = function(Value) NpcOnly = Value end
 })
 
-RageGroup:AddSlider("FireRate", {
-    Text = "射速 (0为无延迟)",
-    Default = 0,
+RageGroup:AddSlider("Predict", {
+    Text = "预判强度",
+    Default = 12,
     Min = 0,
-    Max = 1,
-    Rounding = 2,
-    Callback = function(Value) FireRate = Value end
+    Max = 50,
+    Rounding = 1,
+    Callback = function(Value) PredictionAmount = Value / 100 end
 })
 
-local function GetClosestPlayer()
+local function GetTarget()
     local target = nil
     local dist = math.huge
     
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(TargetPart) then
-            local humanoid = v.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                if not TeamCheck or v.Team ~= LocalPlayer.Team then
-                    local mag = (v.Character[TargetPart].Position - LocalPlayer.Character.PrimaryPart.Position).Magnitude
-                    if mag < dist then
-                        dist = mag
-                        target = v.Character[TargetPart]
-                    end
-                end
+    local candidates = {}
+    
+    if NpcOnly then
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("Humanoid") and v.Parent and v.Parent:IsA("Model") and not Players:GetPlayerFromCharacter(v.Parent) then
+                table.insert(candidates, v.Parent)
+            end
+        end
+    else
+        for _, v in pairs(Players:GetPlayers()) do
+            if v ~= LocalPlayer and v.Character then
+                table.insert(candidates, v.Character)
+            end
+        end
+    end
+    
+    for _, char in pairs(candidates) do
+        local p = char:FindFirstChild(TargetPart)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if p and hum and hum.Health > 0 and root then
+            local mag = (p.Position - LocalPlayer.Character.PrimaryPart.Position).Magnitude
+            if mag < dist then
+                dist = mag
+                target = {part = p, root = root}
             end
         end
     end
     return target
 end
 
-RunService.Heartbeat:Connect(function()
-    if not RageEnabled then return end
+RunService.RenderStepped:Connect(function()
+    if not RageEnabled or not LocalPlayer.Character then return end
     
     local now = tick()
     if now - lastFired < FireRate then return end
     
-    local targetInstance = GetClosestPlayer()
-    local tool = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("No Scope Rifle 2.0") or LocalPlayer.Backpack:FindFirstChild("No Scope Rifle 2.0"))
+    local targetData = GetTarget()
+    local tool = LocalPlayer.Character:FindFirstChild("No Scope Rifle 2.0") or LocalPlayer.Backpack:FindFirstChild("No Scope Rifle 2.0")
     
-    if targetInstance and tool then
+    if targetData and tool then
         local remote = tool:FindFirstChild("RemoteEvent")
         if remote then
-            local targetPos = targetInstance.Position
-            local originOverride = targetPos + Vector3.new(
-                math.random(-RadiusOffset, RadiusOffset),
-                math.random(-RadiusOffset, RadiusOffset),
-                math.random(-RadiusOffset, RadiusOffset)
-            )
+            local velocity = targetData.root.Velocity
+            local predictedPos = targetData.part.Position + (velocity * PredictionAmount)
             
             local args = {
-                targetPos,
-                3000,
-                originOverride
+                predictedPos,
+                3000
             }
             
             remote:FireServer(unpack(args))
@@ -90,4 +99,3 @@ RunService.Heartbeat:Connect(function()
 end)
 
 Library:Notify("Ragebot")
-
