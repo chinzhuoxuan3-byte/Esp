@@ -1,0 +1,192 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Window = Library:CreateWindow({
+    Title = "Yeskid", 
+    Footer = "作者",
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local Tabs = {
+    Main = Window:AddTab("Combat", "crosshair"),
+    ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+}
+
+local CombatGroup = Tabs.Main:AddLeftGroupbox("Combat Functions")
+
+local Config = {
+    Enabled = false,
+    Range = 20,
+    Delay = 0.1,
+    TPStick = false,
+    SpinBot = false,
+    SpinSpeed = 50,
+    HitboxSize = 2,
+    HitboxEnabled = false
+}
+
+CombatGroup:AddToggle("KillauraToggle", {
+    Text = "开启杀戮光环",
+    Default = false,
+    Callback = function(Value) Config.Enabled = Value end
+})
+
+CombatGroup:AddToggle("TPStickToggle", {
+    Text = "循环传送至玩家",
+    Default = false,
+    Callback = function(Value) Config.TPStick = Value end
+})
+
+CombatGroup:AddToggle("SpinBotToggle", {
+    Text = "快速旋转人物",
+    Default = false,
+    Callback = function(Value) Config.SpinBot = Value end
+})
+
+CombatGroup:AddSlider("SpinSpeedSlider", {
+    Text = "旋转速度",
+    Default = 50, Min = 10, Max = 100, Rounding = 0,
+    Callback = function(Value) Config.SpinSpeed = Value end
+})
+
+CombatGroup:AddToggle("HitboxToggle", {
+    Text = "修改玩家 Hitbox",
+    Default = false,
+    Callback = function(Value) Config.HitboxEnabled = Value end
+})
+
+CombatGroup:AddSlider("HitboxSlider", {
+    Text = "Hitbox 尺寸",
+    Default = 2, Min = 2, Max = 20, Rounding = 1,
+    Callback = function(Value) Config.HitboxSize = Value end
+})
+
+CombatGroup:AddSlider("RangeSlider", {
+    Text = "攻击距离",
+    Default = 20, Min = 5, Max = 50, Rounding = 0,
+    Callback = function(Value) Config.Range = Value end
+})
+
+task.spawn(function()
+    pcall(function()
+        local rs = game:GetService("ReplicatedStorage")
+        local folder = rs:WaitForChild("64ee8479-af9e-4bee-9633-a2d377956d03", 5)
+        if folder then
+            local func = folder:WaitForChild("__FUNCTION", 5)
+            if func then
+                local initArgs = {
+                    {
+                        Received = 27,
+                        Loader = Instance.new("Folder", nil):WaitForChild("ClientMover"),
+                        Sent = 24,
+                        Module = Instance.new("ModuleScript", nil),
+                        Mode = "Get"
+                    },
+                    "aUF\017\nZ\003",
+                    { "SplitKey", "ConsoleKeyCode", "BatchKey", "Prefix" }
+                }
+                func:InvokeServer(unpack(initArgs))
+            end
+        end
+    end)
+end)
+
+task.spawn(function()
+    while task.wait() do
+        local lp = game:GetService("Players").LocalPlayer
+        local char = lp.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and Config.SpinBot then
+            char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(Config.SpinSpeed), 0)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.HitboxEnabled then
+            for _, player in next, game:GetService("Players"):GetPlayers() do
+                if player ~= game:GetService("Players").LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = player.Character.HumanoidRootPart
+                    hrp.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+                    hrp.Transparency = 0.7
+                    hrp.BrickColor = BrickColor.new("Really blue")
+                    hrp.CanCollide = false
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(Config.Delay) do
+        if Library.Unloaded then break end
+        if not (Config.Enabled or Config.TPStick) then continue end
+        
+        local lp = game:GetService("Players").LocalPlayer
+        local char = lp.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+        
+        local axe = char:FindFirstChild("Axe")
+        
+        for _, player in next, game:GetService("Players"):GetPlayers() do
+            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local targetChar = player.Character
+                local targetHRP = targetChar.HumanoidRootPart
+                local targetHum = targetChar:FindFirstChild("Humanoid")
+                
+                if not targetHum or targetHum.Health <= 0 then continue end
+                
+                if Config.TPStick then
+                    char.HumanoidRootPart.CFrame = targetHRP.CFrame
+                end
+                
+                local mag = (char.HumanoidRootPart.Position - targetHRP.Position).Magnitude
+                if Config.Enabled and mag <= Config.Range and axe and axe:FindFirstChild("AttackRemote") then
+                    axe.AttackRemote:FireServer(unpack({"Start", "Up"}))
+                    axe.AttackRemote:FireServer(unpack({"Release", "Up", 1}))
+                end
+                
+                if Config.TPStick then task.wait(0.05) end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    local hue = 0
+    local timer = 0
+    while task.wait(0.01) do
+        if Library.Unloaded then break end
+        timer = timer + 0.05
+        hue = (hue + 0.5) % 360
+        local breath = (math.sin(timer) * 0.15) + 0.85
+        local rainbowColor = Color3.fromHSV(hue / 360, 0.75, breath)
+        
+        Library.AccentColor = rainbowColor
+        
+        local ui = game:GetService("CoreGui"):FindFirstChild("ScreenGui") or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
+        if ui then
+            for _, v in next, ui:GetDescendants() do
+                if v:IsA("TextLabel") and v.Text == "mspaint" then
+                    v.TextColor3 = rainbowColor
+                elseif v.Name == "Outline" or v.Name == "TitleBar" or v:IsA("UIStroke") then
+                    if v:IsA("Frame") then v.BackgroundColor3 = rainbowColor 
+                    elseif v:IsA("UIStroke") then v.Color = rainbowColor end
+                end
+            end
+        end
+    end
+end)
+
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
+MenuGroup:AddButton("Unload", function() Library:Unload() end)
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+Library.ToggleKeybind = Library.Options.MenuKeybind 
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+
